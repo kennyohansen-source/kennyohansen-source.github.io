@@ -1,9 +1,9 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="da">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Strandmøllen — Tjekliste (v7.1)</title>
+  <title>Strandmøllen — Tjekliste (v7.2)</title>
 
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -21,7 +21,8 @@
     .btn-danger { background:#ef4444; color:#fff; border-color:#ef4444; }
     .card { background:#fff; border:1px solid #ddd; border-radius:12px; padding:14px; margin-bottom:12px; }
     label.lbl { display:block; font-weight:600; margin-bottom:6px; }
-    input[type="text"], input[type="date"] { padding:8px; border:1px solid #ccc; border-radius:8px; width:100%; }
+    input[type="text"], input[type="date"], textarea { padding:8px; border:1px solid #ccc; border-radius:8px; width:100%; }
+    textarea { min-height:120px; resize:vertical; }
     .grid { display:grid; grid-template-columns:1fr; gap:12px; }
     @media(min-width:680px){ .grid { grid-template-columns:1fr 1fr; } }
     @media(min-width:1024px){ .grid { grid-template-columns:repeat(4, 1fr); } }
@@ -42,7 +43,7 @@
     .qr-container { width:100%; height:360px; background:#000; display:flex;align-items:center;justify-content:center;color:#fff; }
 
     /* Printable replacements */
-    .print-input { display:inline-block; padding:6px; border:1px solid #ddd; border-radius:6px; min-height:28px; }
+    .print-input { display:inline-block; padding:6px; border:1px solid #ddd; border-radius:6px; min-height:28px; white-space:pre-wrap; }
     .print-checkbox { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border:1px solid #9ca3af; border-radius:4px; font-size:14px; }
 
     @media print { .controls, .modal { display:none !important; } }
@@ -82,11 +83,13 @@
         </div>
         <div>
           <label class="lbl" for="inpBatch">Batch information</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="inpBatch" type="text" placeholder="Batch data (kan scannes via QR)" style="flex:1" />
-            <button id="btnScan" title="Scan QR">Scan QR</button>
+          <div style="display:flex; flex-direction: column; gap:8px;">
+            <textarea id="inpBatch" placeholder="Batch data (kan scannes via QR)&#10;DATO:&#10;Batchnr:&#10;Leverandør:&#10;Initialer:"></textarea>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button id="btnScan" title="Scan QR">Scan QR</button>
+              <span class="status" id="qrStatus"></span>
+            </div>
           </div>
-          <div class="status" id="qrStatus"></div>
         </div>
       </div>
 
@@ -187,6 +190,36 @@ function init(){
 }
 init();
 
+/* -------- Synk “Initialer” ind i batch -------- */
+function syncInitialerToBatch(){
+  const initials = (qs("#inpInitials").value || "").trim();
+  const ta = qs("#inpBatch");
+  const lines = (ta.value || "").split(/\r?\n/);
+
+  // find linje der starter med "Initialer:"
+  let found = false;
+  for (let i=0; i<lines.length; i++){
+    if (/^\s*initialer\s*:/.test(lines[i].toLowerCase())) {
+      lines[i] = "Initialer: " + initials;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    // hvis batchfeltet ikke er tomt, tilføj ny linje; ellers start strukturen
+    if (lines.length === 1 && lines[0] === "") {
+      ta.value = "Initialer: " + initials;
+    } else {
+      lines.push("Initialer: " + initials);
+      ta.value = lines.join("\n");
+    }
+  } else {
+    ta.value = lines.join("\n");
+  }
+}
+// Opdater når initialer ændres
+qs("#inpInitials").addEventListener("input", syncInitialerToBatch);
+
 /* -------- QR-scanner (popup) -------- */
 let qr = null, cameras = [], currentCameraIndex = 0;
 
@@ -208,7 +241,7 @@ async function startScanner(){
   try{
     if (!qr) qr = new Html5Qrcode("qrReader");
 
-    // Prøv at bede specifikt om bagkamera (trigger ofte prompt)
+    // Prøv at bede specifikt om bagkamera
     try {
       await qr.start({ facingMode: { exact: "environment" } }, { fps: 10, qrbox: 280 }, onScan, onScanError);
       return;
@@ -238,7 +271,9 @@ function stopScanner(){
 }
 
 function onScan(decodedText){
+  // Sæt scannet tekst ind (bevar linjeskift), og synk derefter initialer ind
   qs("#inpBatch").value = decodedText || "";
+  syncInitialerToBatch();
   closeQrModal();
 }
 function onScanError(_err){ /* ignorer decode-fejl */ }
@@ -247,13 +282,22 @@ function onScanError(_err){ /* ignorer decode-fejl */ }
 async function prepareCloneAndCanvas(rootEl){
   const clone = rootEl.cloneNode(true);
 
+  // inputs
   clone.querySelectorAll('input[type="text"], input[type="date"]').forEach(inp => {
     const div = document.createElement('div');
     div.className = 'print-input';
     div.textContent = inp.value || '';
     inp.parentNode.replaceChild(div, inp);
   });
-
+  // textarea (bevar linjeskift)
+  clone.querySelectorAll('textarea').forEach(ta => {
+    const div = document.createElement('div');
+    div.className = 'print-input';
+    div.style.whiteSpace = 'pre-wrap';
+    div.textContent = ta.value || '';
+    ta.parentNode.replaceChild(div, ta);
+  });
+  // checkbokse
   clone.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     const span = document.createElement('div');
     span.className = 'print-checkbox';
@@ -323,7 +367,8 @@ document.getElementById("btnSend").addEventListener("click", async ()=>{
   const body = [
     `Dato: ${dateVal}`,
     `Initialer: ${qs("#inpInitials").value||''}`,
-    `Batch: ${qs("#inpBatch").value||''}`,
+    `Batch:`,
+    qs("#inpBatch").value || '',
     `Ordre nummer: ${ordre}`,
     `Filnavn: ${filename}`,
     '',
@@ -342,6 +387,7 @@ document.getElementById("btnSend").addEventListener("click", async ()=>{
 /* -------- Nulstil -------- */
 document.getElementById("btnReset").addEventListener("click", ()=>{
   qsa('input[type="text"], input[type="date"]').forEach(i=>i.value='');
+  qsa('textarea').forEach(i=>i.value='');
   qsa('input[type="checkbox"]').forEach(i=>i.checked=false);
   qs("#inpDate").value = new Date().toISOString().slice(0,10);
 });
