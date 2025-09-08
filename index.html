@@ -176,6 +176,12 @@ function init(){
     row.innerHTML = `<input type="checkbox" id="cb${i}"><div style="flex:1;margin-left:6px"><label for="cb${i}">${txt}</label></div>`;
     container.appendChild(row);
   });
+  const infoRow = document.createElement("div");
+infoRow.className = "row";
+infoRow.innerHTML = `<div style="margin-left:26px; font-size:13px; color:#444;">
+  <em>Pdf gemmes her - Denne pc/SAS (F:)/Logistik/04 - Lager/Modtagekontrol/Specialgas - Her vælges den korrekte leverandør mappe</em>
+</div>`;
+container.appendChild(infoRow);
 
   const tbody = qs("#gasTable tbody"); tbody.innerHTML = "";
   GAS_ROWS.forEach(r => {
@@ -394,5 +400,6 @@ document.getElementById("btnReset").addEventListener("click", ()=>{
 </script>
 </body>
 </html>
+
 
 
