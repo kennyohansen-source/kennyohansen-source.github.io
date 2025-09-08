@@ -1,0 +1,350 @@
+﻿<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Strandmøllen — Tjekliste (v7.1)</title>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; background:#f8fafc; margin:0; padding:20px; }
+    .wrap { max-width:980px; margin:0 auto; }
+    .logo { display:flex; justify-content:center; margin-bottom:12px; }
+    .logo img { max-height:72px; }
+    .controls { display:flex; gap:8px; justify-content:flex-end; margin-bottom:12px; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #ccc; cursor:pointer; }
+    .btn-primary { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+    .btn-danger { background:#ef4444; color:#fff; border-color:#ef4444; }
+    .card { background:#fff; border:1px solid #ddd; border-radius:12px; padding:14px; margin-bottom:12px; }
+    label.lbl { display:block; font-weight:600; margin-bottom:6px; }
+    input[type="text"], input[type="date"] { padding:8px; border:1px solid #ccc; border-radius:8px; width:100%; }
+    .grid { display:grid; grid-template-columns:1fr; gap:12px; }
+    @media(min-width:680px){ .grid { grid-template-columns:1fr 1fr; } }
+    @media(min-width:1024px){ .grid { grid-template-columns:repeat(4, 1fr); } }
+    .row { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid #eee; }
+    .row:first-child { border-top:none; }
+    .row input[type="checkbox"] { transform:scale(1.12); margin-top:4px; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th,td { border:1px solid #ddd; padding:8px; text-align:left; }
+    th { background:#f1f5f9; }
+    .small { font-size:13px; color:#666; }
+    .status { font-size:12px; color:#444; margin-top:6px; }
+    .warn { color:#b45309; }
+
+    /* QR modal */
+    .modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); }
+    .modal.open { display:flex; }
+    .modal-inner { background:#fff; padding:12px; border-radius:10px; max-width:780px; width:95%; }
+    .qr-container { width:100%; height:360px; background:#000; display:flex;align-items:center;justify-content:center;color:#fff; }
+
+    /* Printable replacements */
+    .print-input { display:inline-block; padding:6px; border:1px solid #ddd; border-radius:6px; min-height:28px; }
+    .print-checkbox { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border:1px solid #9ca3af; border-radius:4px; font-size:14px; }
+
+    @media print { .controls, .modal { display:none !important; } }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app">
+    <div class="logo">
+      <!-- Indsæt base64 for offline logo -->
+      <img src="data:image/jpeg;base64,LOGO_BASE64_HER" alt="Strandmøllen logo">
+    </div>
+
+    <div class="controls" id="controls">
+      <button id="btnSend" class="btn-primary">Send mail</button>
+      <button id="btnPdf" class="btn-primary">Download PDF</button>
+      <button id="btnReset" class="btn-danger">Nulstil</button>
+    </div>
+
+    <div id="content" class="card">
+      <div style="text-align:center;margin-bottom:6px">
+        <strong style="font-size:18px">Tjekliste — Indkøbte færdigvarer</strong>
+      </div>
+      <p class="small" style="margin-top:0">Formålet med tjeklisten er at sikre modtagekontrol af indkøbte færdigvarer. Ved indkøbte færdigvarer menes fyldte leverandørflasker.</p>
+
+      <div class="grid" style="margin-top:12px">
+        <div>
+          <label class="lbl" for="inpDate">Dato</label>
+          <input id="inpDate" type="date" />
+        </div>
+        <div>
+          <label class="lbl" for="inpInitials">Initialer</label>
+          <input id="inpInitials" type="text" placeholder="fx AB" />
+        </div>
+        <div>
+          <label class="lbl" for="inpOrdre">Ordre nummer</label>
+          <input id="inpOrdre" type="text" placeholder="fx 123456" />
+        </div>
+        <div>
+          <label class="lbl" for="inpBatch">Batch information</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="inpBatch" type="text" placeholder="Batch data (kan scannes via QR)" style="flex:1" />
+            <button id="btnScan" title="Scan QR">Scan QR</button>
+          </div>
+          <div class="status" id="qrStatus"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px" id="checklist"></div>
+
+      <div class="card" style="margin-top:12px">
+        <h3 style="margin:0 0 8px 0">Gasoversigt</h3>
+        <p class="small" style="margin-top:0;margin-bottom:8px">Oversigt over gængse gasser med kemisk betegnelse samt danske, engelske og tyske navne.</p>
+        <table id="gasTable">
+          <thead><tr><th>Kemisk betegnelse</th><th>Navn på dansk</th><th>Navn på engelsk</th><th>Navn på tysk</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div style="text-align:center;margin-top:10px;color:#666;font-size:13px">
+        Bilag til QS D4 dok. nr. 9368 / 6.1.02 version 28 - Side 1/1
+      </div>
+    </div>
+  </div>
+
+  <!-- QR modal -->
+  <div id="qrModal" class="modal" role="dialog" aria-modal="true" aria-label="QR scanner">
+    <div class="modal-inner">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>Scan QR-kode</strong>
+        <div>
+          <button id="btnFlip">Skift kamera</button>
+          <button id="closeQr">Luk</button>
+        </div>
+      </div>
+      <div id="qrReader" class="qr-container">Kamera initialiseres…</div>
+      <div class="status" id="qrErrors"></div>
+      <div style="margin-top:8px;text-align:right"><button id="btnStopScan">Stop scan</button></div>
+    </div>
+  </div>
+
+<script>
+/* -------- Data -------- */
+const CHECK_ITEMS = [
+  "Kontrollér ordrenummer, er der overensstemmelse mellem SAS ordre",
+  "Kontrollér at den rigtige gas er modtaget i forhold til bestilt. Dette gøres ved at sammenligne ordre, følgeseddel og certifikat på modtaget flaske.",
+  "Tjek for transportskader eller andre skader",
+  "Tjek at sideetiketten/labstreameren er på engelsk og at skyldetiketten/bananetiketten er på dansk/tysk afhængig af hvor flasken skal hen",
+  "Påsat batchmærker og stregkode",
+  "For flasker med renhed over 5.0 printes 1 ekstra batchmærke som gives til lab",
+  "Påsat manilamærke med varenr. på flasken",
+  "Varen lagerlægges"
+];
+
+const GAS_ROWS = [
+  ["Ar","Argon","Argon","Argon"],
+  ["O₂","Ilt / Oxygen","Oxygen","Sauerstoff"],
+  ["N₂","Kvælstof / Nitrogen","Nitrogen","Stickstoff"],
+  ["CO₂","Kuldioxid / Carbondioxid","Carbon dioxide","Kohlendioxid"],
+  ["H₂O","Vand","Water","Wasser"],
+  ["H₂","Hydrogen","Hydrogen","Wasserstoff"],
+  ["CH₄","Methan","Methane","Methan"],
+  ["CO","Kulilte / Carbonmonoxid","Carbon monoxide","Kohlenmonoxid"],
+  ["He","Helium","Helium","Helium"],
+  ["Cl₂","Klor / Chlor","Chlorine","Chlor"]
+];
+
+const qs = s => document.querySelector(s);
+const qsa = s => Array.from(document.querySelectorAll(s));
+
+/* ISO uge */
+function isoWeek(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { week, year: d.getUTCFullYear() };
+}
+
+/* -------- Init -------- */
+function init(){
+  qs("#inpDate").value = new Date().toISOString().slice(0,10);
+
+  const container = qs("#checklist"); container.innerHTML = "";
+  CHECK_ITEMS.forEach((txt, i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<input type="checkbox" id="cb${i}"><div style="flex:1;margin-left:6px"><label for="cb${i}">${txt}</label></div>`;
+    container.appendChild(row);
+  });
+
+  const tbody = qs("#gasTable tbody"); tbody.innerHTML = "";
+  GAS_ROWS.forEach(r => {
+    const tr = document.createElement("tr");
+    r.forEach(c => { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  });
+
+  if (location.protocol === "file:") {
+    qs("#qrStatus").innerHTML = '<span class="warn">Bemærk: Kamera kan være blokeret, når filen åbnes direkte (file://). Åbn via http(s) eller localhost for bedst resultat.</span>';
+  }
+}
+init();
+
+/* -------- QR-scanner (popup) -------- */
+let qr = null, cameras = [], currentCameraIndex = 0;
+
+function openQrModal(){ qs("#qrModal").classList.add("open"); startScanner(); }
+function closeQrModal(){ qs("#qrModal").classList.remove("open"); stopScanner(); }
+
+qs("#btnScan").addEventListener("click", openQrModal);
+qs("#closeQr").addEventListener("click", closeQrModal);
+qs("#btnStopScan").addEventListener("click", closeQrModal);
+
+qs("#btnFlip").addEventListener("click", async ()=>{
+  if (!cameras.length) return;
+  currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+  await restartScanner();
+});
+
+async function startScanner(){
+  qs("#qrErrors").textContent = "";
+  try{
+    if (!qr) qr = new Html5Qrcode("qrReader");
+
+    // Prøv at bede specifikt om bagkamera (trigger ofte prompt)
+    try {
+      await qr.start({ facingMode: { exact: "environment" } }, { fps: 10, qrbox: 280 }, onScan, onScanError);
+      return;
+    } catch(e){ /* fallback */ }
+
+    cameras = await Html5Qrcode.getCameras();
+    if (!cameras || !cameras.length) throw new Error("Ingen kamera fundet på enheden.");
+    currentCameraIndex = 0;
+    await qr.start(cameras[currentCameraIndex].id, { fps: 10, qrbox: 280 }, onScan, onScanError);
+  } catch(err){
+    qs("#qrErrors").innerHTML = '<span class="warn">Fejl ved start af kamera: ' + (err && err.message ? err.message : err) + '</span>' +
+      (location.protocol === "file:" ? '<br><span class="warn">Tip: Åbn via http(s) eller localhost for at tillade kameraadgang.</span>' : '');
+  }
+}
+
+async function restartScanner(){
+  if (!qr) return;
+  try{ await qr.stop(); }catch(_){}
+  try{ await qr.start(cameras[currentCameraIndex].id, { fps: 10, qrbox: 280 }, onScan, onScanError); }
+  catch(err){ qs("#qrErrors").textContent = "Kunne ikke skifte kamera: " + err; }
+}
+
+function stopScanner(){
+  if (!qr) return;
+  try{ qr.stop().then(()=>qr.clear()).catch(()=>qr.clear()); }catch(_){}
+  qr = null;
+}
+
+function onScan(decodedText){
+  qs("#inpBatch").value = decodedText || "";
+  closeQrModal();
+}
+function onScanError(_err){ /* ignorer decode-fejl */ }
+
+/* -------- PDF-klargøring -------- */
+async function prepareCloneAndCanvas(rootEl){
+  const clone = rootEl.cloneNode(true);
+
+  clone.querySelectorAll('input[type="text"], input[type="date"]').forEach(inp => {
+    const div = document.createElement('div');
+    div.className = 'print-input';
+    div.textContent = inp.value || '';
+    inp.parentNode.replaceChild(div, inp);
+  });
+
+  clone.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    const span = document.createElement('div');
+    span.className = 'print-checkbox';
+    span.textContent = cb.checked ? '✓' : '';
+    cb.parentNode.replaceChild(span, cb);
+  });
+
+  const controls = clone.querySelector('#controls'); if(controls) controls.style.display='none';
+
+  clone.style.position = 'absolute'; clone.style.left = '-10000px'; clone.id = 'print-clone';
+  document.body.appendChild(clone);
+
+  try {
+    const canvas = await html2canvas(clone, { scale: 2, useCORS: true, allowTaint: true });
+    return canvas;
+  } finally {
+    const el = document.getElementById('print-clone'); if(el) el.remove();
+  }
+}
+
+/* -------- Download PDF -------- */
+document.getElementById("btnPdf").addEventListener("click", async ()=>{
+  const ordre = qs("#inpOrdre").value.trim();
+  const dateVal = qs("#inpDate").value;
+  if(!ordre || !dateVal){ alert("Udfyld venligst både Ordre nummer og Dato før download."); return; }
+
+  const canvas = await prepareCloneAndCanvas(qs("#content"));
+  const imgData = canvas.toDataURL("image/png");
+  const { jsPDF } = window.jspdf; const pdf = new jsPDF("p","pt","a4");
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+  const imgWidth = canvas.width * ratio; const imgHeight = canvas.height * ratio;
+  const x = (pageWidth - imgWidth) / 2; const y = 20;
+  pdf.addImage(imgData,"PNG",x,y,imgWidth,imgHeight);
+  const { week, year } = isoWeek(new Date(dateVal));
+  const filename = `${ordre}${String(week).padStart(2,'0')}${year}.pdf`;
+  pdf.save(filename);
+  setTimeout(()=>{ document.getElementById("btnReset").click(); }, 500);
+});
+
+/* -------- Send mail (download PDF først) -------- */
+document.getElementById("btnSend").addEventListener("click", async ()=>{
+  const ordre = qs("#inpOrdre").value.trim();
+  const dateVal = qs("#inpDate").value;
+  if(!ordre || !dateVal){ alert("Udfyld venligst både Ordre nummer og Dato før afsendelse."); return; }
+
+  const canvas = await prepareCloneAndCanvas(qs("#content"));
+  const imgData = canvas.toDataURL("image/png");
+  const { jsPDF } = window.jspdf; const pdf = new jsPDF("p","pt","a4");
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+  const imgWidth = canvas.width * ratio; const imgHeight = canvas.height * ratio;
+  const x = (pageWidth - imgWidth) / 2; const y = 20;
+  pdf.addImage(imgData,"PNG",x,y,imgWidth,imgHeight);
+  const { week, year } = isoWeek(new Date(dateVal));
+  const filename = `${ordre}${String(week).padStart(2,'0')}${year}.pdf`;
+  pdf.save(filename);
+
+  const itemsText = qsa('#checklist .row').map(r=>{
+    const chk=r.querySelector('input[type="checkbox"]');
+    const label=r.querySelector('label') ? r.querySelector('label').innerText : r.innerText;
+    return `- [${chk && chk.checked ? 'X' : ' '}] ${label}`;
+  }).join('\n');
+
+  const body = [
+    `Dato: ${dateVal}`,
+    `Initialer: ${qs("#inpInitials").value||''}`,
+    `Batch: ${qs("#inpBatch").value||''}`,
+    `Ordre nummer: ${ordre}`,
+    `Filnavn: ${filename}`,
+    '',
+    'Tjekliste:',
+    itemsText,
+    '',
+    'Vedhæft venligst den automatisk downloadede PDF-fil før afsendelse.'
+  ].join('\n');
+
+  const to='modtagelse@strandmollen.dk';
+  const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Tjekliste '+filename)}&body=${encodeURIComponent(body)}`;
+  setTimeout(()=>{ window.location.href = mailto; },600);
+  setTimeout(()=>{ document.getElementById("btnReset").click(); },1200);
+});
+
+/* -------- Nulstil -------- */
+document.getElementById("btnReset").addEventListener("click", ()=>{
+  qsa('input[type="text"], input[type="date"]').forEach(i=>i.value='');
+  qsa('input[type="checkbox"]').forEach(i=>i.checked=false);
+  qs("#inpDate").value = new Date().toISOString().slice(0,10);
+});
+</script>
+</body>
+</html>
